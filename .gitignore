@@ -1,0 +1,19 @@
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore virtual environment folders
+env/
+venv/
+
+# Ignore model files
+models/
+*.bin
+*.pt
+*.pkl
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
