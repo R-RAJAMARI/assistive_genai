@@ -5,9 +5,11 @@ import torch
 import streamlit as st
 from PIL import Image
 from gtts import gTTS
+from huggingface_hub import login  # <— NEW: HF Hub login
 
 # ---------------------------
 # Import model-loading functions
+# (these should now load from HF Hub by repo id, not local snapshots)
 # ---------------------------
 from models_utils import load_blip, load_sd
 
@@ -16,30 +18,63 @@ from models_utils import load_blip, load_sd
 # Preload models at startup (cached)
 # ---------------------------
 @st.cache_resource
-def init_models():
-    """Try to load BLIP and Stable Diffusion. 
-    Return None if a model fails to load."""
+def init_models(hf_token: str | None = None):
+    """
+    Cached model initializer.
+    - Logs in to Hugging Face Hub once (if a token is provided).
+    - Tries to load BLIP and Stable Diffusion.
+    - Returns (processor, blip, blip_device, pipe, sd_device, errors_dict)
+    """
+    # Authenticate with Hugging Face Hub (avoids 429 rate limits)
+    if hf_token:
+        try:
+            login(hf_token)
+        except Exception as e:
+            # Don't stop the app if login fails — just warn;
+            # anonymous access may still work for some models.
+            st.warning(f"Hugging Face login failed (continuing anonymously): {e}")
+
     processor, blip, blip_device = None, None, None
     pipe, sd_device = None, None
+    errors = {}
+
+    # Try BLIP
     try:
         processor, blip, blip_device = load_blip()
     except Exception as e:
-        st.warning(f"⚠️ BLIP model not available: {e}")
+        errors["blip"] = str(e)
+
+    # Try Stable Diffusion
     try:
         pipe, sd_device = load_sd()
     except Exception as e:
-        st.warning(f"⚠️ Stable Diffusion not available: {e}")
-    return processor, blip, blip_device, pipe, sd_device
+        errors["sd"] = str(e)
 
+    return processor, blip, blip_device, pipe, sd_device, errors
+
+
+# Read HF token from Streamlit Secrets or environment (DON'T hardcode)
+HF_TOKEN = st.secrets.get("HUGGINGFACE_TOKEN", None) or os.getenv("HUGGINGFACE_TOKEN")
 
 with st.spinner("Loading models… this may take 1–2 minutes the first time"):
-    processor, blip, blip_device, pipe, sd_device = init_models()
+    processor, blip, blip_device, pipe, sd_device, load_errors = init_models(HF_TOKEN)
 
+# If neither model loaded, stop early
 if not any([blip, pipe]):
-    st.error("❌ No models could be loaded. Please check logs or requirements.")
+    st.error("❌ No models could be loaded. Please check logs or your requirements.")
+    # Surface specific reasons if we have them
+    if load_errors:
+        with st.expander("Why models failed to load"):
+            for k, v in load_errors.items():
+                st.write(f"**{k}**: {v}")
     st.stop()
 
-st.success("✅ Models loaded!")
+# Inform about partial availability
+if load_errors:
+    for k, v in load_errors.items():
+        st.warning(f"⚠️ {k.upper()} not available: {v}")
+
+st.success("✅ Models loaded and ready!")
 
 
 # ---------------------------
@@ -67,22 +102,24 @@ def pil_download_bytes(img: Image.Image, form="PNG"):
 st.title("🦾 Image-to-Text & Text-to-Image Assistive Tool")
 st.caption("Describe any image in natural language or generate images from text — with optional speech output.")
 
-
 # Build tabs dynamically based on which models loaded
 tabs = []
+tab_map = {}  # name -> index
 if blip:
     tabs.append("🖼️ Describe Image")
 if pipe:
     tabs.append("🎨 Generate Image")
 
 tab_objects = st.tabs(tabs)
+for i, name in enumerate(tabs):
+    tab_map[name] = i
 
 
 # ---------------------------
-# TAB 1: Image Captioning (only if BLIP loaded)
+# TAB 1: Image Captioning (BLIP)
 # ---------------------------
 if blip:
-    with tab_objects[0]:
+    with tab_objects[tab_map["🖼️ Describe Image"]]:
         st.subheader("Describe an Image")
 
         colL, colR = st.columns([1, 1])
@@ -91,7 +128,7 @@ if blip:
             prompt_hint = st.text_input("(Optional) Add guidance (e.g., 'describe details and colors')", value="")
             do_tts = st.checkbox("Speak the description (gTTS)", value=True)
             lang = st.text_input("TTS language (ISO code, e.g., 'en', 'hi')", value="en", max_chars=5)
-            max_len = st.slider("Max words (approx.)", 5, 60, 30)
+            max_len = st.slider("Max words (approx.)", 5, 60, 30, help="Controls caption length")
 
             if st.button("Describe"):
                 if not uploaded:
@@ -129,16 +166,18 @@ if blip:
 
         with colR:
             st.markdown("### 💡 Tips for Interviews")
-            st.markdown("- Try with random photos to show robustness. \n"
-                        "- Use the guidance box to demonstrate controllability. \n"
-                        "- Toggle TTS to highlight accessibility focus.")
+            st.markdown(
+                "- Try with random photos to show robustness. \n"
+                "- Use the guidance box to demonstrate controllability. \n"
+                "- Toggle TTS to highlight accessibility focus."
+            )
 
 
 # ---------------------------
-# TAB 2: Text-to-Image (only if Stable Diffusion loaded)
+# TAB 2: Text-to-Image (Stable Diffusion)
 # ---------------------------
 if pipe:
-    with tab_objects[-1]:  # last tab is SD if present
+    with tab_objects[tab_map["🎨 Generate Image"]]:
         st.subheader("Generate an Image from Text")
 
         prompt = st.text_area("Prompt", value="a cozy reading nook by a window, soft morning light, photorealistic")
@@ -203,4 +242,4 @@ if pipe:
 # ---------------------------
 # Footer
 # ---------------------------
-st.caption("Models: BLIP (Salesforce/blip-image-captioning-large), Stable Diffusion v1-5 (runwayml/stable-diffusion-v1-5).")
+st.caption("Models used: BLIP (Salesforce/blip-image-captioning-large), Stable Diffusion v1-5 (runwayml/stable-diffusion-v1-5).")
