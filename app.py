@@ -13,6 +13,8 @@ from huggingface_hub import login  # <— NEW: HF Hub login
 # ---------------------------
 from models_utils import load_blip, load_sd
 
+import os
+os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
 
 # ---------------------------
 # Preload models at startup (cached)
