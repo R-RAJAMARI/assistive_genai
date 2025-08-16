@@ -1,37 +1,39 @@
-# models_utils.py
-from transformers import pipeline
+import os
+import torch
+from transformers import BlipProcessor, BlipForConditionalGeneration
+from diffusers import StableDiffusionPipeline
+
+# ---------------------------
+# Create folders if they don't exist
+# ---------------------------
+os.makedirs("models/blip", exist_ok=True)
+os.makedirs("models/sd", exist_ok=True)
+
+# ---------------------------
+# Load BLIP from local folder
+# ---------------------------
+
+def load_blip():
+    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base",use_fast=True)
+    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = model.to(device)
+    return processor, model, device
+
+
+# ---------------------------
+# Load Stable Diffusion from local folder
+# ---------------------------
 from diffusers import StableDiffusionPipeline
 import torch
 
-# ---------------------------
-# BLIP: Image captioning pipeline
-# ---------------------------
-def load_blip():
-    """
-    Returns:
-        blip_pipe: HuggingFace pipeline for image-to-text
-        device: "cpu"
-    """
-    blip_pipe = pipeline(
-        "image-to-text",
-        model="Salesforce/blip-image-captioning-base",
-        device=-1  # CPU only
-    )
-    return blip_pipe, "cpu"
-
-# ---------------------------
-# Stable Diffusion: Text-to-image pipeline
-# ---------------------------
 def load_sd():
-    """
-    Returns:
-        sd_pipe: Diffusers Stable Diffusion pipeline (CPU)
-        device: "cpu"
-    """
-    device = "cpu"
-    sd_pipe = StableDiffusionPipeline.from_pretrained(
-        "runwayml/stable-diffusion-v1-5",
-        torch_dtype=torch.float32
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    pipe = StableDiffusionPipeline.from_pretrained(
+        "runwayml/stable-diffusion-v1-5", 
+        torch_dtype=torch.float16 if device == "cuda" else torch.float32
     )
-    sd_pipe = sd_pipe.to(device)
-    return sd_pipe, device
+    pipe = pipe.to(device)
+
+    return pipe, device
