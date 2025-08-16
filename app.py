@@ -1,11 +1,12 @@
 import os
 import io
+import pathlib
 from datetime import datetime
 import torch
 import streamlit as st
 from PIL import Image
 from gtts import gTTS
-from huggingface_hub import login  # <— NEW: HF Hub login
+from huggingface_hub import login  # HF Hub login
 
 # ---------------------------
 # Import model-loading functions
@@ -13,7 +14,7 @@ from huggingface_hub import login  # <— NEW: HF Hub login
 # ---------------------------
 from models_utils import load_blip, load_sd
 
-import os
+# Disable Streamlit file watcher issues
 os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
 
 # ---------------------------
@@ -32,8 +33,6 @@ def init_models(hf_token: str | None = None):
         try:
             login(hf_token)
         except Exception as e:
-            # Don't stop the app if login fails — just warn;
-            # anonymous access may still work for some models.
             st.warning(f"Hugging Face login failed (continuing anonymously): {e}")
 
     processor, blip, blip_device = None, None, None
@@ -55,8 +54,21 @@ def init_models(hf_token: str | None = None):
     return processor, blip, blip_device, pipe, sd_device, errors
 
 
-# Read HF token from Streamlit Secrets or environment (DON'T hardcode)
-HF_TOKEN = st.secrets.get("HUGGINGFACE_TOKEN", None) or os.getenv("HUGGINGFACE_TOKEN")
+# ---------------------------
+# Read HF token safely
+# ---------------------------
+HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")  # check env var first
+if not HF_TOKEN:
+    try:
+        secrets_path1 = pathlib.Path.home() / ".streamlit" / "secrets.toml"
+        secrets_path2 = pathlib.Path(__file__).parent / ".streamlit" / "secrets.toml"
+        if secrets_path1.exists() or secrets_path2.exists():
+            HF_TOKEN = st.secrets.get("HUGGINGFACE_TOKEN", None)
+    except Exception:
+        HF_TOKEN = None
+
+if not HF_TOKEN:
+    st.info("ℹ️ No Hugging Face token found — using anonymous access (some models may fail).")
 
 with st.spinner("Loading models… this may take 1–2 minutes the first time"):
     processor, blip, blip_device, pipe, sd_device, load_errors = init_models(HF_TOKEN)
@@ -64,7 +76,6 @@ with st.spinner("Loading models… this may take 1–2 minutes the first time"):
 # If neither model loaded, stop early
 if not any([blip, pipe]):
     st.error("❌ No models could be loaded. Please check logs or your requirements.")
-    # Surface specific reasons if we have them
     if load_errors:
         with st.expander("Why models failed to load"):
             for k, v in load_errors.items():
@@ -106,7 +117,7 @@ st.caption("Describe any image in natural language or generate images from text 
 
 # Build tabs dynamically based on which models loaded
 tabs = []
-tab_map = {}  # name -> index
+tab_map = {}
 if blip:
     tabs.append("🖼️ Describe Image")
 if pipe:
@@ -217,7 +228,6 @@ if pipe:
 
                     st.image(image, caption="Generated image", use_column_width=True)
 
-                    # Download button
                     png_bytes = pil_download_bytes(image, "PNG")
                     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                     st.download_button("⬇️ Download image (PNG)", data=png_bytes, file_name=f"generated_{ts}.png")
