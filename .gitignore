@@ -18,3 +18,4 @@ models/
 .DS_Store
 Thumbs.db
 .streamlit/secrets.toml 
+.streamlit/secret.toml 
