@@ -41,7 +41,7 @@ def init_models(hf_token: str | None = None):
 
     # Try BLIP
     try:
-        processor, blip, blip_device = load_blip()
+        blip, blip_device = load_blip()
     except Exception as e:
         errors["blip"] = str(e)
 
