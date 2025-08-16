@@ -1,39 +1,23 @@
-import os
-import torch
-from transformers import BlipProcessor, BlipForConditionalGeneration
-from diffusers import StableDiffusionPipeline
+from transformers import pipeline
 
 # ---------------------------
-# Create folders if they don't exist
+# BLIP Image Captioning via Hugging Face Inference API
 # ---------------------------
-os.makedirs("models/blip", exist_ok=True)
-os.makedirs("models/sd", exist_ok=True)
-
-# ---------------------------
-# Load BLIP from local folder
-# ---------------------------
-
 def load_blip():
-    processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base",use_fast=True)
-    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = model.to(device)
-    return processor, model, device
-
-
-# ---------------------------
-# Load Stable Diffusion from local folder
-# ---------------------------
-from diffusers import StableDiffusionPipeline
-import torch
-
-def load_sd():
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    pipe = StableDiffusionPipeline.from_pretrained(
-        "runwayml/stable-diffusion-v1-5", 
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32
+    blip_pipe = pipeline(
+        "image-to-text",
+        model="Salesforce/blip-image-captioning-base",
+        device=-1  # CPU only, safe for Streamlit Cloud
     )
-    pipe = pipe.to(device)
+    return blip_pipe, "cpu"  # keep return signature similar
 
-    return pipe, device
+# ---------------------------
+# Stable Diffusion Text-to-Image via Hugging Face Inference API
+# ---------------------------
+def load_sd():
+    sd_pipe = pipeline(
+        "text-to-image",
+        model="runwayml/stable-diffusion-v1-5",
+        device=-1  # CPU only
+    )
+    return sd_pipe, "cpu"
