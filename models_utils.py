@@ -15,7 +15,7 @@ os.makedirs("models/sd", exist_ok=True)
 
 def load_blip():
     processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base",use_fast=True)
-    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base",use_fast=True)
+    model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
     return processor, model, device
